@@ -6,7 +6,7 @@ export default defineConfig({
   workers: 2,
   timeout: 45000,
   use: {
-    baseURL: "http://localhost:4173",
+    baseURL: "http://localhost:4173/gradus-party-game/",
     viewport: { width: 1024, height: 768 },
     reducedMotion: "reduce",
     launchOptions: process.env.CHROMIUM_PATH
@@ -15,7 +15,7 @@ export default defineConfig({
   },
   webServer: {
     command: "npm run preview -- --port 4173",
-    url: "http://localhost:4173",
+    url: "http://localhost:4173/gradus-party-game/",
     reuseExistingServer: !process.env.CI,
   },
   reporter: "list",

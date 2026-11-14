@@ -4,6 +4,7 @@ import { readFileSync, readdirSync } from "node:fs";
 import { createHash } from "node:crypto";
 // Build the precache from actual emitted files, including any supplied audio.
 export default defineConfig({
+  base: "/gradus-party-game/",
   define: {
     __AUDIO_FILES__: JSON.stringify(
       readdirSync("public/audio")

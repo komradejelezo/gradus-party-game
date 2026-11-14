@@ -3,7 +3,7 @@ import { createGame, roll, sabotage } from "../src/game-engine/engine";
 import type { Game } from "../src/game-engine/types";
 async function open(page: Page) {
   await page.addInitScript(() => sessionStorage.setItem("gradus-intro", "1"));
-  await page.goto("/");
+  await page.goto("./");
 }
 async function seed(page: Page, game: Game) {
   await open(page);
