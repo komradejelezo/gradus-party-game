@@ -209,3 +209,98 @@ test("финал адресата подставы, провал на 27, поб
     .click();
   await expect(page.locator(".winner")).toContainText("Борис");
 });
+
+test("округлое поле не перекрывается и помещается на планшетах", async ({
+  page,
+}) => {
+  await start(page);
+  for (const viewport of [
+    { width: 1024, height: 768 },
+    { width: 1280, height: 800 },
+    { width: 1366, height: 768 },
+  ]) {
+    await page.setViewportSize(viewport);
+    const geometry = await page.locator(".space").evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const r = node.getBoundingClientRect();
+        return {
+          x: r.x + r.width / 2,
+          y: r.y + r.height / 2,
+          width: r.width,
+          height: r.height,
+          radius: getComputedStyle(node).borderRadius,
+        };
+      }),
+    );
+    expect(geometry).toHaveLength(30);
+    for (const [i, a] of geometry.entries()) {
+      expect(a.radius).toBe("50%");
+      expect(Math.abs(a.width - a.height)).toBeLessThan(1);
+      for (const b of geometry.slice(i + 1))
+        expect(Math.hypot(a.x - b.x, a.y - b.y)).toBeGreaterThan(
+          (a.width + b.width) / 2,
+        );
+    }
+    const board = await page.locator(".board-shell").boundingBox();
+    expect(board!.y + board!.height).toBeLessThan(viewport.height);
+    const button = await page
+      .getByRole("button", { name: "Бросить кубик" })
+      .boundingBox();
+    expect(button!.height).toBeGreaterThanOrEqual(48);
+    expect(button!.y + button!.height).toBeLessThan(viewport.height);
+  }
+});
+
+test("обычная анимация проводит фишку по дорожке и открывает карточку", async ({
+  page,
+}) => {
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.addInitScript(() =>
+    Object.defineProperty(crypto, "getRandomValues", {
+      value: (values: Uint32Array) => {
+        values.fill(5);
+        return values;
+      },
+    }),
+  );
+  await start(page);
+  await page.evaluate(() => {
+    const frames: string[] = [];
+    (window as unknown as { flightFrames: string[] }).flightFrames = frames;
+    new MutationObserver((records) => {
+      for (const record of records) {
+        const el = record.target as Element;
+        if (el.tagName === "g" && el.closest(".pawn-flight")) {
+          const transform = el.getAttribute("transform");
+          if (transform) frames.push(transform);
+        }
+      }
+    }).observe(document.body, {
+      attributes: true,
+      subtree: true,
+      attributeFilter: ["transform"],
+    });
+  });
+  await page.getByRole("button", { name: "Бросить кубик" }).click();
+  await expect(page.locator(".dice.rolling")).toBeVisible();
+  await expect(page.locator(".task-card")).toBeVisible();
+  await expect(page.locator(".pawn-flight g")).toHaveCount(0);
+  const frames = await page.evaluate(
+    () => (window as unknown as { flightFrames: string[] }).flightFrames,
+  );
+  expect(new Set(frames).size).toBeGreaterThan(5);
+  await expect(
+    page
+      .locator(".space")
+      .filter({ has: page.locator(".space-number", { hasText: "06" }) })
+      .locator(".pawn"),
+  ).toHaveText("1");
+  await page
+    .locator(".task-card")
+    .getByRole("button", { name: "× Провал" })
+    .click();
+  await expect(page.locator(".feedback-failure")).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Следующий игрок" }),
+  ).toBeEnabled();
+});

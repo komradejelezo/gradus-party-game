@@ -12,6 +12,7 @@ import {
 import { load, save, type Save } from "../game-engine/storage";
 import { board, categories, colors } from "../content/board";
 import { sound, type AudioSettings } from "../audio/audio";
+import { trackPath, trackPoint } from "./board-layout";
 
 type Screen = "menu" | "setup" | "onboarding" | "game";
 type Dialog = "rules" | "audio" | "about" | "reset" | null;
@@ -308,15 +309,15 @@ function Menu({
           <Tag>
             <span className="live-dot" /> Вечер набирает обороты
           </Tag>
-          <h1>
-            МЕНЬШЕ
-            <br />
-            ПРАВИЛ.
-            <br />
-            <span>БОЛЬШЕ</span>
-            <br />
-            <span className="outline">ГРАДУСА.</span>
+          <h1 className="menu-wordmark" aria-label="ГРАДУС">
+            <span>ГРАДУС</span>
+            <sup>°</sup>
           </h1>
+          <h2 className="menu-tagline">
+            Этот вечер
+            <br />
+            <em>будут вспоминать.</em>
+          </h2>
           <p>
             Бросай кубик. Лови момент. Подставляй друзей.
             <br />
@@ -418,33 +419,39 @@ function Pawn({ player, index }: { player: Player; index: number }) {
   );
 }
 function Board({ game }: { game: Game }) {
-  const [positions, setPositions] = useState(() =>
+  const [positions, setPositions] = useState<Record<string, number>>(() =>
     Object.fromEntries(game.players.map((p) => [p.id, p.position])),
   );
+  const [travelling, setTravelling] = useState(false);
   const moveKey = JSON.stringify([game.turn, game.phase, game.moves]);
   useEffect(() => {
-    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const finalPositions = Object.fromEntries(
+      game.players.map((p) => [p.id, p.position]),
+    );
     const steps = Math.max(
       0,
       ...game.moves.map((m) => Math.abs(m.to - m.from)),
     );
-    if (reduced || !steps) {
-      setPositions(
-        Object.fromEntries(game.players.map((p) => [p.id, p.position])),
-      );
+    if (matchMedia("(prefers-reduced-motion: reduce)").matches || !steps) {
+      setPositions(finalPositions);
+      setTravelling(false);
       return;
     }
-    setPositions(
-      Object.fromEntries(
-        game.players.map((p) => [
-          p.id,
-          game.moves.find((m) => m.player === p.id)?.from ?? p.position,
-        ]),
-      ),
+    const initial = Object.fromEntries(
+      game.players.map((p) => [
+        p.id,
+        game.moves.find((m) => m.player === p.id)?.from ?? p.position,
+      ]),
     );
-    let step = 0;
-    const timer = setInterval(() => {
-      step++;
+    setPositions(initial);
+    setTravelling(true);
+    let frame = 0;
+    const started = performance.now();
+    const animate = (now: number) => {
+      const progress = Math.min(steps, (now - started) / 90);
+      const whole = Math.floor(progress),
+        fraction = progress - whole;
+      const eased = whole + fraction * fraction * (3 - 2 * fraction);
       setPositions(
         Object.fromEntries(
           game.players.map((p) => {
@@ -454,59 +461,96 @@ function Board({ game }: { game: Game }) {
               m
                 ? m.from +
                   Math.sign(m.to - m.from) *
-                    Math.min(step, Math.abs(m.to - m.from))
+                    Math.min(eased, Math.abs(m.to - m.from))
                 : p.position,
             ];
           }),
         ),
       );
-      if (step >= steps) clearInterval(timer);
-    }, 85);
-    return () => clearInterval(timer);
+      if (progress < steps) frame = requestAnimationFrame(animate);
+      else {
+        setPositions(finalPositions);
+        setTravelling(false);
+      }
+    };
+    frame = requestAnimationFrame(animate);
+    return () => cancelAnimationFrame(frame);
   }, [moveKey]);
-  const visiblePlayers = game.players.map((p) => ({
-    ...p,
-    position: positions[p.id] ?? p.position,
-  }));
+  const movingIds = travelling
+    ? game.moves.filter((m) => m.from !== m.to).map((m) => m.player)
+    : [];
+  const visiblePlayers = game.players
+    .filter((p) => !movingIds.includes(p.id))
+    .map((p) => ({ ...p, position: positions[p.id] ?? p.position }));
   return (
     <div className="board-shell">
       <div className="board-heading">
-        <Tag>Маршрут этого вечера</Tag>
+        <Tag>
+          <span className="live-dot" /> Маршрут этого вечера
+        </Tag>
         <span>
           СТАРТ <b>→</b> ЛЕГЕНДА
         </span>
       </div>
       <div className="board">
-        <svg
-          className="board-path"
-          viewBox="0 0 600 500"
-          preserveAspectRatio="none"
-          aria-hidden="true"
-        >
-          <path d="M50 50H550Q585 50 585 100T550 150H50Q15 150 15 200T50 250H550Q585 250 585 300T550 350H50Q15 350 15 400T50 450H550" />
+        <div className="board-sign" aria-hidden="true">
+          <span>ГРАДУС°</span>
+          <small>НАБИРАЕМ ОБОРОТЫ</small>
+        </div>
+        <svg className="board-path" viewBox="0 0 1000 700" aria-hidden="true">
+          <defs>
+            <linearGradient id="track-light" x1="0" y1="1" x2="1" y2="0">
+              <stop stopColor="#FF4D6D" />
+              <stop offset=".5" stopColor="#8B5CF6" />
+              <stop offset="1" stopColor="#3EA6FF" />
+            </linearGradient>
+          </defs>
+          <path className="track-shadow" d={trackPath} />
+          <path className="track-bed" d={trackPath} />
+          <path className="track-glow" d={trackPath} />
+          <path className="track-line" d={trackPath} />
+          <path
+            className="track-progress"
+            d={trackPath}
+            pathLength="30"
+            strokeDasharray={`${game.players[game.active].position} 30`}
+          />
         </svg>
+        <div
+          className="track-start"
+          style={{ left: "8.5%", top: `${590 / 7}%` }}
+        >
+          <span>↗</span>
+          <b>СТАРТ</b>
+          <small>0</small>
+        </div>
         {board.map((category, i) => {
-          const row = Math.floor(i / 6),
-            col = row % 2 === 0 ? i % 6 : 5 - (i % 6);
-          const occupants = visiblePlayers.filter((p) => p.position === i + 1);
+          const point = trackPoint(i + 1),
+            occupants = visiblePlayers.filter((p) => p.position === i + 1);
+          const allOccupants = game.players.filter(
+            (p) => Math.round(positions[p.id] ?? p.position) === i + 1,
+          );
+          const activeHere = allOccupants.some(
+            (p) => p.id === game.players[game.active].id,
+          );
           return (
             <div
               key={i}
-              className={`space ${category} ${i === 29 ? "finish" : ""} ${occupants.some((p) => p.id === game.players[game.active].id) ? "occupied" : ""}`}
+              className={`space ${category} ${i === 29 ? "finish" : ""} ${activeHere ? "occupied" : ""}`}
               style={
                 {
-                  gridColumn: col + 1,
-                  gridRow: row + 1,
+                  left: `${point.x / 10}%`,
+                  top: `${point.y / 7}%`,
                   "--cell-color": categories[category].color,
                 } as React.CSSProperties
               }
-              aria-label={`Клетка ${i + 1}, ${categories[category].name}${occupants.length ? ", игроки: " + occupants.map((p) => p.name).join(", ") : ""}`}
+              aria-label={`Клетка ${i + 1}, ${categories[category].name}${allOccupants.length ? ", игроки: " + allOccupants.map((p) => p.name).join(", ") : ""}`}
             >
-              <span className="space-number">
-                {String(i + 1).padStart(2, "0")}
-              </span>
               <span className="space-symbol">
                 {i === 29 ? "⚑" : categories[category].symbol}
+              </span>
+              <span className="space-number">
+                {String(i + 1).padStart(2, "0")}
               </span>
               {i === 29 && <span className="finish-label">ФИНИШ</span>}
               <div className="space-pawns">
@@ -534,6 +578,38 @@ function Board({ game }: { game: Game }) {
             </div>
           );
         })}
+        <svg className="pawn-flight" viewBox="0 0 1000 700" aria-hidden="true">
+          {game.players
+            .filter((p) => movingIds.includes(p.id))
+            .map((p, i) => {
+              const point = trackPoint(positions[p.id] ?? p.position);
+              return (
+                <g
+                  key={p.id}
+                  transform={`translate(${point.x} ${point.y - i * 12})`}
+                >
+                  <circle className="pawn-aura" r="30" fill={p.color} />
+                  <ellipse cy="24" rx="18" ry="5" fill="#08030e" opacity=".5" />
+                  <circle
+                    r="21"
+                    fill={p.color}
+                    stroke="#FFF3E0"
+                    strokeWidth="3"
+                  />
+                  <circle cy="-5" r="13" fill="white" opacity=".15" />
+                  <text
+                    y="6"
+                    textAnchor="middle"
+                    fill="#1B0D2B"
+                    fontSize="18"
+                    fontWeight="800"
+                  >
+                    {game.players.indexOf(p) + 1}
+                  </text>
+                </g>
+              );
+            })}
+        </svg>
       </div>
       <div className="board-bottom">
         <div className="start">
@@ -544,8 +620,8 @@ function Board({ game }: { game: Game }) {
               .slice(0, 5)
               .map((p) => (
                 <Pawn
-                  player={p}
                   key={p.id}
+                  player={p}
                   index={game.players.findIndex((player) => player.id === p.id)}
                 />
               ))}
@@ -569,7 +645,7 @@ function Board({ game }: { game: Game }) {
   );
 }
 function Dice({ value, rolling }: { value: number | null; rolling: boolean }) {
-  const positions: Record<number, number[]> = {
+  const dots: Record<number, number[]> = {
     1: [4],
     2: [0, 8],
     3: [0, 4, 8],
@@ -578,19 +654,26 @@ function Dice({ value, rolling }: { value: number | null; rolling: boolean }) {
     6: [0, 2, 3, 5, 6, 8],
   };
   return (
-    <div
-      className={`dice ${rolling ? "rolling" : ""}`}
-      aria-label={
-        rolling
-          ? "Кубик вращается"
-          : value
-            ? `На кубике ${value}`
-            : "Кубик готов"
-      }
-    >
-      {Array.from({ length: 9 }, (_, i) => (
-        <i key={i} className={positions[value || 5].includes(i) ? "dot" : ""} />
-      ))}
+    <div className={`dice-stage ${rolling ? "is-rolling" : ""}`}>
+      <div
+        className={`dice ${rolling ? "rolling" : ""}`}
+        aria-label={
+          rolling
+            ? "Кубик вращается"
+            : value
+              ? `На кубике ${value}`
+              : "Кубик готов"
+        }
+      >
+        {[value || 5, 6, 3, 2, 4, 1].map((face, j) => (
+          <div className={`dice-face face-${j}`} key={j} aria-hidden="true">
+            {Array.from({ length: 9 }, (_, i) => (
+              <i key={i} className={dots[face].includes(i) ? "dot" : ""} />
+            ))}
+          </div>
+        ))}
+      </div>
+      <span className="dice-shadow" aria-hidden="true" />
     </div>
   );
 }
@@ -643,11 +726,21 @@ function Task({
     <dialog
       ref={taskDialog}
       onCancel={(e) => e.preventDefault()}
-      className={`task-card ${isFinal ? "final-card" : ""}`}
+      className={`task-card category-${card.category} ${isFinal ? "final-card" : ""}`}
+      style={
+        {
+          "--task-accent": isFinal
+            ? "#FFC107"
+            : categories[card.category].color,
+        } as React.CSSProperties
+      }
       role="dialog"
       aria-modal="true"
       aria-labelledby="task-title"
     >
+      <div className="card-watermark" aria-hidden="true">
+        {isFinal ? "✶" : categories[card.category].symbol}
+      </div>
       <div className="task-top">
         <span
           className="category-pill"
@@ -761,16 +854,25 @@ function Victory({
   const p = game.players.find((p) => p.id === game.winner)!;
   return (
     <main className="victory page">
+      <div className="victory-aura" aria-hidden="true">
+        <i />
+        <i />
+        <i />
+      </div>
       <div className="confetti" aria-hidden="true">
-        {Array.from({ length: 28 }, (_, i) => (
+        {Array.from({ length: 48 }, (_, i) => (
           <i
             key={i}
-            style={{
-              left: `${(i * 37) % 100}%`,
-              background: colors[i % colors.length],
-              animationDelay: `${-(i % 7)}s`,
-              transform: `rotate(${i * 23}deg)`,
-            }}
+            style={
+              {
+                left: `${(i * 37) % 100}%`,
+                background: colors[i % colors.length],
+                animationDelay: `${i * 0.025}s`,
+                "--drift": `${(i % 2 ? 1 : -1) * (50 + i * 7)}px`,
+                "--rest-top": `${(i * 31) % 100}%`,
+                transform: `rotate(${i * 23}deg)`,
+              } as React.CSSProperties
+            }
           />
         ))}
       </div>
@@ -820,6 +922,7 @@ export function App() {
   const [draft, setDraft] = useState<string[]>([]);
   const [rolling, setRolling] = useState(false);
   const [moving, setMoving] = useState(false);
+  const [feedback, setFeedback] = useState<"success" | "failure" | null>(null);
   const [storageError, setStorageError] = useState(false);
   const [offline, setOffline] = useState(!navigator.onLine);
   const lock = useRef(false);
@@ -924,6 +1027,8 @@ export function App() {
   const doResolve = (success: boolean) => {
     if (!game || lock.current) return;
     lock.current = true;
+    setFeedback(success ? "success" : "failure");
+    timers.current.push(setTimeout(() => setFeedback(null), 750));
     const g = resolve(game, success);
     commit(g);
     sound.tick(success);
@@ -940,7 +1045,39 @@ export function App() {
   };
   return (
     <>
-      <div className="app-grain" aria-hidden="true" />
+      <div className="app-grain" aria-hidden="true">
+        <div className="bar-shelves">
+          {Array.from({ length: 12 }, (_, i) => (
+            <i
+              key={i}
+              style={
+                {
+                  "--bottle": i,
+                  "--bottle-width": `${15 + (i % 3) * 9}px`,
+                  "--bottle-height": `${36 + (i % 4) * 10}px`,
+                  "--bottle-bottom": `${(i % 2) * 60}%`,
+                } as React.CSSProperties
+              }
+            />
+          ))}
+        </div>
+        <div className="bar-light light-red" />
+        <div className="bar-light light-blue" />
+        <div className="bar-counter" />
+        <div className="bar-dust">
+          {Array.from({ length: 12 }, (_, i) => (
+            <i
+              key={i}
+              style={
+                {
+                  "--particle": i,
+                  "--particle-top": `${12 + ((i * 17) % 70)}%`,
+                } as React.CSSProperties
+              }
+            />
+          ))}
+        </div>
+      </div>
       {screen === "menu" && (
         <Menu
           saved={game}
@@ -1005,7 +1142,9 @@ export function App() {
             onUndo={undo}
           />
         ) : (
-          <main className="game page">
+          <main
+            className={`game page ${feedback ? `feedback-${feedback}` : ""}`}
+          >
             <header className="game-header">
               <button
                 className="brand-button"
