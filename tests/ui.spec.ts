@@ -304,3 +304,107 @@ test("обычная анимация проводит фишку по доро�
     page.getByRole("button", { name: "Следующий игрок" }),
   ).toBeEnabled();
 });
+
+test("вступление пропускается одним нажатием, громкость сохраняется и отсутствие озвучки объяснено", async ({
+  page,
+}) => {
+  const errors: string[] = [];
+  page.on("pageerror", (error) => errors.push(error.message));
+  await page.emulateMedia({ reducedMotion: "no-preference" });
+  await page.addInitScript(() => {
+    if (!localStorage.getItem("gradus-audio"))
+      localStorage.setItem(
+        "gradus-audio",
+        JSON.stringify({
+          music: false,
+          effects: false,
+          voice: true,
+          mute: true,
+        }),
+      );
+  });
+  await page.goto("./");
+  await expect(page.locator(".intro-word>span")).toHaveCount(6);
+  await page
+    .getByRole("button", { name: "Включить звук", exact: true })
+    .click();
+  const enabled = await page.evaluate(() =>
+    JSON.parse(localStorage.getItem("gradus-audio")!),
+  );
+  expect(enabled.mute).toBe(false);
+  expect(enabled.effects).toBe(true);
+  await page.getByRole("button", { name: "Пропустить →", exact: true }).click();
+  await expect(page.locator(".cinematic-intro")).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /Продолжить/ })).toBeDisabled();
+  await page
+    .getByRole("button", { name: "Музыка и звук", exact: true })
+    .click();
+  await expect(page.getByRole("slider")).toHaveCount(3);
+  await page
+    .getByRole("slider", { name: "Громкость: фоновая музыка" })
+    .press("Home");
+  await page
+    .getByRole("slider", { name: "Громкость: фоновая музыка" })
+    .press("ArrowRight");
+  await page
+    .getByRole("slider", { name: "Громкость: звуковые эффекты" })
+    .press("End");
+  await page
+    .getByRole("slider", { name: "Громкость: голос ведущего" })
+    .press("Home");
+  await page.getByRole("switch", { name: "Без звука", exact: true }).check();
+  await page.reload();
+  await page
+    .getByRole("button", { name: "Музыка и звук", exact: true })
+    .click();
+  await expect(
+    page.getByRole("slider", { name: "Громкость: фоновая музыка" }),
+  ).toHaveValue("1");
+  await expect(
+    page.getByRole("slider", { name: "Громкость: звуковые эффекты" }),
+  ).toHaveValue("100");
+  await expect(
+    page.getByRole("slider", { name: "Громкость: голос ведущего" }),
+  ).toHaveValue("0");
+  await expect(
+    page.getByRole("switch", { name: "Без звука", exact: true }),
+  ).toBeChecked();
+  await expect(page.locator(".dialog")).toContainText(
+    "Музыкальный саундтрек ещё не добавлен",
+  );
+  await page.getByRole("button", { name: "Закрыть", exact: true }).click();
+  await page.getByRole("button", { name: "Начать игру", exact: true }).click();
+  await page.getByRole("button", { name: "Все в сборе" }).click();
+  await page.getByRole("button", { name: "Прослушать / повторить" }).click();
+  await expect(page.locator(".voice-status")).toContainText(
+    "Запись правил ещё не добавлена",
+  );
+  expect(errors).toEqual([]);
+});
+
+test("полный экран включается и выключается без изменения сохранённой партии", async ({
+  page,
+}) => {
+  await start(page);
+  const saved = await page.evaluate(() =>
+    localStorage.getItem("gradus-save-v1"),
+  );
+  await page
+    .getByRole("button", { name: "На весь экран", exact: true })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => !!document.fullscreenElement))
+    .toBe(true);
+  await page
+    .getByRole("button", {
+      name: "Выйти из полноэкранного режима",
+      exact: true,
+    })
+    .click();
+  await expect
+    .poll(() => page.evaluate(() => !!document.fullscreenElement))
+    .toBe(false);
+  expect(
+    await page.evaluate(() => localStorage.getItem("gradus-save-v1")),
+  ).toBe(saved);
+});

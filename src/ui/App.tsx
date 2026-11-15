@@ -13,11 +13,12 @@ import { load, save, type Save } from "../game-engine/storage";
 import { board, categories, colors } from "../content/board";
 import { sound, type AudioSettings } from "../audio/audio";
 import { trackPath, trackPoint } from "./board-layout";
+import { CategoryMark, Intro, FullscreenButton, Moment } from "./Presentation";
 
 type Screen = "menu" | "setup" | "onboarding" | "game";
 type Dialog = "rules" | "audio" | "about" | "reset" | null;
 const rulesVoice =
-  "Добро пожаловать в ГРАДУС! Здесь всё просто. Бросаешь кубик, двигаешь фишку и выполняешь задание по цвету клетки. Справился — получаешь бонус. Облажался — ловишь штраф. Один раз за игру можешь подставить друга! Первым доберись до финиша и пройди последнее испытание. Ну что, готовы? Тогда погнали!";
+  "Добро пожаловать в ГРАДУС! Тут всё просто. Бросаешь кубик, двигаешь фишку и выполняешь задание. Справился — получаешь бонус. Облажался — ловишь штраф. Один раз за игру можешь подставить друга! Первым доберись до финиша и пройди последнее испытание. Ну что, готовы? Тогда погнали!";
 function Icon({
   name,
 }: {
@@ -140,37 +141,113 @@ function AudioControls({
 }) {
   return (
     <>
-      <p className="muted">
-        Ваш вечер — ваша громкость. Звук включается только после вашего
-        действия.
-      </p>
+      <p className="muted">Ваш вечер — ваша громкость.</p>
       {(
         [
-          ["music", "Фоновая музыка", "Фанк, диско и немного свинга"],
-          ["effects", "Звуковые эффекты", "Бросок, результат и яркие моменты"],
-          ["voice", "Голос правил", "Заранее записанная озвучка"],
-          ["mute", "Без звука", "Приглушить всё одним нажатием"],
+          [
+            "music",
+            "Фоновая музыка",
+            "Funky House · Nu Disco · Electro Swing",
+            "musicVolume",
+          ],
+          [
+            "effects",
+            "Звуковые эффекты",
+            "Кубик, шаги, карты и яркие моменты",
+            "effectsVolume",
+          ],
+          [
+            "voice",
+            "Голос ведущего",
+            "Правила и короткие реплики",
+            "voiceVolume",
+          ],
         ] as const
-      ).map(([key, title, sub]) => (
-        <label className="setting" key={key}>
-          <span>
-            <b>{title}</b>
-            <small>{sub}</small>
-          </span>
-          <input
-            type="checkbox"
-            role="switch"
-            checked={settings[key]}
-            onChange={(e) =>
-              setSettings({ ...settings, [key]: e.target.checked })
-            }
-          />
-        </label>
+      ).map(([key, title, subtitle, volume]) => (
+        <div className="audio-channel" key={key}>
+          <label className="setting">
+            <span>
+              <b>{title}</b>
+              <small>{subtitle}</small>
+            </span>
+            <input
+              type="checkbox"
+              role="switch"
+              aria-label={title}
+              checked={settings[key]}
+              onChange={(e) =>
+                setSettings({ ...settings, [key]: e.target.checked })
+              }
+            />
+          </label>
+          <label className="volume-control">
+            <span>{Math.round(settings[volume] * 100)}%</span>
+            <input
+              type="range"
+              min="0"
+              max="100"
+              step="1"
+              aria-label={`Громкость: ${title.toLowerCase()}`}
+              value={Math.round(settings[volume] * 100)}
+              onChange={(e) =>
+                setSettings({
+                  ...settings,
+                  [volume]: Number(e.target.value) / 100,
+                })
+              }
+            />
+          </label>
+        </div>
       ))}
-      <p className="note">
-        Музыка и голос доступны, если в сборку добавлены аудиофайлы. Без них
-        игра работает в тишине; короткие сигналы создаются локально.
-      </p>
+      <label className="setting">
+        <span>
+          <b>Без звука</b>
+          <small>Приглушить всё одним нажатием</small>
+        </span>
+        <input
+          type="checkbox"
+          role="switch"
+          aria-label="Без звука"
+          checked={settings.mute}
+          onChange={(e) => setSettings({ ...settings, mute: e.target.checked })}
+        />
+      </label>
+      <div className="audio-availability">
+        <span className="live-dot" />
+        <b>Оригинальные звуковые эффекты готовы</b>
+      </div>
+      {(!sound.hasMusic || !sound.hasHost) && (
+        <p className="note">
+          {!sound.hasMusic ? "Музыкальный саундтрек ещё не добавлен. " : ""}
+          {!sound.hasHost ? "Записи ведущего ещё не добавлены. " : ""}Игра и
+          звуковые эффекты работают без этих файлов.
+        </p>
+      )}
+    </>
+  );
+}
+function RulesAudio() {
+  const [status, setStatus] = useState("");
+  return (
+    <>
+      <button
+        className="secondary"
+        onClick={() => {
+          sound.unlock();
+          if (!sound.rules(() => setStatus("")))
+            setStatus(
+              "Запись правил ещё не добавлена. Все правила доступны в тексте.",
+            );
+          else setStatus("Слушаем правила… Нажмите ещё раз, чтобы повторить.");
+        }}
+      >
+        <Icon name="play" /> Прослушать / повторить
+      </button>
+      {status && (
+        <p className="voice-status" role="status">
+          {status}
+        </p>
+      )}
     </>
   );
 }
@@ -302,7 +379,10 @@ function Menu({
       <header className="menu-header">
         <Logo small />
         <span className="edition">НАСТОЛЬНАЯ ИГРА ДЛЯ КОМПАНИИ</span>
-        <span className="age">18+</span>
+        <div className="menu-utilities">
+          <FullscreenButton />
+          <span className="age">18+</span>
+        </div>
       </header>
       <div className="menu-main">
         <section className="menu-copy">
@@ -327,17 +407,22 @@ function Menu({
             <button className="primary" onClick={onStart}>
               Начать игру <Icon name="arrow" />
             </button>
-            {saved && (
-              <button className="secondary" onClick={onContinue}>
-                Продолжить <span className="muted">Ход {saved.turn}</span>
-              </button>
-            )}
+            <button
+              className="secondary"
+              onClick={onContinue}
+              disabled={!saved}
+            >
+              Продолжить{" "}
+              <span className="muted">
+                {saved ? `Ход ${saved.turn}` : "Нет сохранённой партии"}
+              </span>
+            </button>
           </div>
           <button
             className="text-button rules-link"
             onClick={() => onDialog("rules")}
           >
-            <span className="circle-play">▷</span> Как играть? Две минуты — и
+            <span className="circle-play">▷</span> Правила · две минуты — и
             погнали
           </button>
         </section>
@@ -350,7 +435,9 @@ function Menu({
           <div className="art-label">ХОРОШИЙ ВЕЧЕР НЕ СЛУЧАЕТСЯ САМ</div>
           <div className="art-card art-chaos">
             <span>03 / ХАОС</span>
-            <b>✶</b>
+            <b>
+              <CategoryMark category="chaos" />
+            </b>
             <strong>
               ПЛАНОВ
               <br />
@@ -360,7 +447,9 @@ function Menu({
           </div>
           <div className="art-card art-body">
             <span>02 / ТЕЛО</span>
-            <b>↝</b>
+            <b>
+              <CategoryMark category="body" />
+            </b>
             <strong>
               МЕНЬШЕ СЛОВ.
               <br />
@@ -369,7 +458,9 @@ function Menu({
           </div>
           <div className="art-card art-voice">
             <span>01 / ГОЛОС</span>
-            <b>◖</b>
+            <b>
+              <CategoryMark category="voice" />
+            </b>
             <strong>ТВОЙ ВЫХОД.</strong>
             <small>Скажи это красиво</small>
           </div>
@@ -407,12 +498,25 @@ function Menu({
     </main>
   );
 }
-function Pawn({ player, index }: { player: Player; index: number }) {
+function Pawn({
+  player,
+  index,
+  active = false,
+}: {
+  player: Player;
+  index: number;
+  active?: boolean;
+}) {
   return (
     <span
-      className="pawn"
+      className={`pawn ${active ? "is-active" : ""}`}
       title={player.name}
-      style={{ background: player.color }}
+      style={
+        {
+          background: player.color,
+          "--pawn-color": player.color,
+        } as React.CSSProperties
+      }
     >
       {index + 1}
     </span>
@@ -446,12 +550,17 @@ function Board({ game }: { game: Game }) {
     setPositions(initial);
     setTravelling(true);
     let frame = 0;
+    let lastStep = -1;
     const started = performance.now();
     const animate = (now: number) => {
       const progress = Math.min(steps, (now - started) / 90);
       const whole = Math.floor(progress),
         fraction = progress - whole;
       const eased = whole + fraction * fraction * (3 - 2 * fraction);
+      if (whole !== lastStep && progress < steps) {
+        sound.effect("step", whole);
+        lastStep = whole;
+      }
       setPositions(
         Object.fromEntries(
           game.players.map((p) => {
@@ -509,6 +618,7 @@ function Board({ game }: { game: Game }) {
           <path className="track-bed" d={trackPath} />
           <path className="track-glow" d={trackPath} />
           <path className="track-line" d={trackPath} />
+          <path className="track-trace" d={trackPath} pathLength="100" />
           <path
             className="track-progress"
             d={trackPath}
@@ -547,7 +657,7 @@ function Board({ game }: { game: Game }) {
               aria-label={`Клетка ${i + 1}, ${categories[category].name}${allOccupants.length ? ", игроки: " + allOccupants.map((p) => p.name).join(", ") : ""}`}
             >
               <span className="space-symbol">
-                {i === 29 ? "⚑" : categories[category].symbol}
+                {i === 29 ? "⚑" : <CategoryMark category={category} />}
               </span>
               <span className="space-number">
                 {String(i + 1).padStart(2, "0")}
@@ -558,6 +668,7 @@ function Board({ game }: { game: Game }) {
                   <Pawn
                     key={p.id}
                     player={p}
+                    active={p.id === game.players[game.active].id}
                     index={game.players.findIndex(
                       (player) => player.id === p.id,
                     )}
@@ -582,30 +693,73 @@ function Board({ game }: { game: Game }) {
           {game.players
             .filter((p) => movingIds.includes(p.id))
             .map((p, i) => {
-              const point = trackPoint(positions[p.id] ?? p.position);
+              const position = positions[p.id] ?? p.position;
+              const point = trackPoint(position);
+              const move = game.moves.find((m) => m.player === p.id)!;
+              const hop =
+                Math.sin(Math.PI * (position - Math.floor(position))) * 23;
               return (
                 <g
                   key={p.id}
                   transform={`translate(${point.x} ${point.y - i * 12})`}
                 >
-                  <circle className="pawn-aura" r="30" fill={p.color} />
-                  <ellipse cy="24" rx="18" ry="5" fill="#08030e" opacity=".5" />
-                  <circle
-                    r="21"
-                    fill={p.color}
-                    stroke="#FFF3E0"
-                    strokeWidth="3"
+                  {[0.11, 0.22, 0.33].map((lag, j) => {
+                    const tail = trackPoint(
+                      Math.max(
+                        Math.min(move.from, move.to),
+                        Math.min(
+                          Math.max(move.from, move.to),
+                          position - Math.sign(move.to - move.from) * lag,
+                        ),
+                      ),
+                    );
+                    return (
+                      <circle
+                        key={j}
+                        cx={tail.x - point.x}
+                        cy={tail.y - point.y}
+                        r={15 - j * 3}
+                        fill={p.color}
+                        opacity={0.2 - j * 0.05}
+                      />
+                    );
+                  })}
+                  <ellipse
+                    cy="22"
+                    rx={17 - hop * 0.15}
+                    ry="5"
+                    fill="#08030e"
+                    opacity={0.5 - hop * 0.008}
                   />
-                  <circle cy="-5" r="13" fill="white" opacity=".15" />
-                  <text
-                    y="6"
-                    textAnchor="middle"
-                    fill="#1B0D2B"
-                    fontSize="18"
-                    fontWeight="800"
+                  <g
+                    className="jumping-token"
+                    transform={`translate(0 ${-hop})`}
                   >
-                    {game.players.indexOf(p) + 1}
-                  </text>
+                    <circle className="pawn-aura" r="30" fill={p.color} />
+                    <circle cy="4" r="21" fill="#0f081b" />
+                    <circle
+                      r="21"
+                      fill={p.color}
+                      stroke="#FFF3E0"
+                      strokeWidth="2.5"
+                    />
+                    <ellipse
+                      cy="-8"
+                      rx="13"
+                      ry="7"
+                      fill="white"
+                      opacity=".27"
+                    />
+                    <text
+                      y="6"
+                      textAnchor="middle"
+                      fill="#1B0D2B"
+                      fontSize="18"
+                      fontWeight="800"
+                    >
+                      {game.players.indexOf(p) + 1}
+                    </text>
+                  </g>
                 </g>
               );
             })}
@@ -696,6 +850,22 @@ function Task({
     d?.showModal();
     return () => d?.close();
   }, []);
+  const [outcome, setOutcome] = useState<"success" | "failure" | null>(null);
+  const pendingOutcome = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(
+    () => () => {
+      if (pendingOutcome.current) clearTimeout(pendingOutcome.current);
+    },
+    [],
+  );
+  const choose = (success: boolean) => {
+    if (pendingOutcome.current) return;
+    setOutcome(success ? "success" : "failure");
+    pendingOutcome.current = setTimeout(
+      () => onResolve(success),
+      matchMedia("(prefers-reduced-motion: reduce)").matches ? 0 : 150,
+    );
+  };
   const card = game.card!;
   const isFinal = game.phase === "final";
   const active = game.players[game.active];
@@ -726,7 +896,7 @@ function Task({
     <dialog
       ref={taskDialog}
       onCancel={(e) => e.preventDefault()}
-      className={`task-card category-${card.category} ${isFinal ? "final-card" : ""}`}
+      className={`task-card category-${card.category} ${isFinal ? "final-card" : ""} ${outcome ? `card-${outcome}` : ""}`}
       style={
         {
           "--task-accent": isFinal
@@ -738,18 +908,31 @@ function Task({
       aria-modal="true"
       aria-labelledby="task-title"
     >
+      {(isFinal || card.category === "chaos") && (
+        <div
+          className={`card-announcement ${isFinal ? "announcement-final" : ""}`}
+          aria-hidden="true"
+        >
+          <span>{isFinal ? "°" : "ϟ"}</span>
+          <strong>{isFinal ? "ПОСЛЕДНИЙ ГРАДУС" : "ХАОС!"}</strong>
+        </div>
+      )}
       <div className="card-watermark" aria-hidden="true">
-        {isFinal ? "✶" : categories[card.category].symbol}
+        {isFinal ? "✶" : <CategoryMark category={card.category} />}
       </div>
       <div className="task-top">
         <span
           className="category-pill"
           style={{ color: categories[card.category].color }}
         >
-          {categories[card.category].symbol}{" "}
+          <CategoryMark category={card.category} />{" "}
           {isFinal ? "Финальное испытание" : categories[card.category].name}
         </span>
-        <button className="task-undo" disabled={!canUndo} onClick={onUndo}>
+        <button
+          className="task-undo"
+          disabled={!canUndo || !!outcome}
+          onClick={onUndo}
+        >
           ↶ Отменить
         </button>
       </div>
@@ -796,10 +979,18 @@ function Task({
         </p>
       )}
       <div className="outcomes">
-        <button className="success" onClick={() => onResolve(true)}>
+        <button
+          className="success"
+          disabled={!!outcome}
+          onClick={() => choose(true)}
+        >
           ✓ Засчитано
         </button>
-        <button className="failure" onClick={() => onResolve(false)}>
+        <button
+          className="failure"
+          disabled={!!outcome}
+          onClick={() => choose(false)}
+        >
           × Провал
         </button>
       </div>
@@ -895,10 +1086,10 @@ function Victory({
       </p>
       <div className="victory-actions">
         <button className="primary" onClick={onNew}>
-          Ещё по одной партии <Icon name="arrow" />
+          Реванш <Icon name="arrow" />
         </button>
         <button className="secondary" onClick={onMenu}>
-          В главное меню
+          Главное меню
         </button>
       </div>
       <button className="text-button" onClick={onUndo}>
@@ -923,6 +1114,7 @@ export function App() {
   const [rolling, setRolling] = useState(false);
   const [moving, setMoving] = useState(false);
   const [feedback, setFeedback] = useState<"success" | "failure" | null>(null);
+  const [moment, setMoment] = useState<"chaos" | "final" | null>(null);
   const [storageError, setStorageError] = useState(false);
   const [offline, setOffline] = useState(!navigator.onLine);
   const lock = useRef(false);
@@ -934,11 +1126,26 @@ export function App() {
       sessionStorage.setItem("gradus-intro", "1");
     } catch {}
   };
-  useEffect(() => {
-    const t = setTimeout(endSplash, 1600);
-    return () => clearTimeout(t);
-  }, []);
   useEffect(() => () => timers.current.forEach(clearTimeout), []);
+  useEffect(() => {
+    const unlock = () => sound.unlock();
+    const tap = (event: Event) => {
+      if ((event.target as Element).closest("button")) sound.effect("tap");
+    };
+    const visibility = () => sound.setHidden(document.hidden);
+    document.addEventListener("pointerdown", unlock, { capture: true });
+    document.addEventListener("keydown", unlock, { capture: true });
+    document.addEventListener("click", tap, { capture: true });
+    document.addEventListener("visibilitychange", visibility);
+    return () => {
+      document.removeEventListener("pointerdown", unlock, { capture: true });
+      document.removeEventListener("keydown", unlock, { capture: true });
+      document.removeEventListener("click", tap, { capture: true });
+      document.removeEventListener("visibilitychange", visibility);
+      sound.stopVoice();
+    };
+  }, []);
+
   useEffect(() => {
     const on = () => setOffline(!navigator.onLine);
     window.addEventListener("online", on);
@@ -965,9 +1172,28 @@ export function App() {
             : "game-theme";
     sound.theme(track, game?.phase === "card" && screen === "game");
   }, [screen, game?.phase, settings]);
+  useEffect(
+    () => () => {
+      if (screen === "onboarding" || dialog === "rules") sound.stopVoice();
+    },
+    [screen, dialog],
+  );
   useEffect(() => {
-    if (screen !== "onboarding" && dialog !== "rules") sound.stopVoice();
-  }, [screen, dialog]);
+    if (screen !== "game" || !game || moving) return;
+    if (game.phase === "roll" && game.turn === 1 && !game.die)
+      sound.say("start");
+    if (game.phase === "won") {
+      sound.effect("victory");
+      sound.say("victory");
+    } else if (game.phase === "final") {
+      sound.effect("final");
+      sound.say("final");
+    } else if (game.phase === "card") {
+      sound.effect(game.card?.category === "chaos" ? "chaos" : "card");
+      if (game.card?.category === "chaos" && !game.recipient)
+        sound.say("chaos");
+    }
+  }, [screen, game?.phase, game?.turn, moving]);
   const commit = (g: Game) =>
     setSnapshot((prev) =>
       prev
@@ -994,7 +1220,7 @@ export function App() {
     if (!game || lock.current || game.phase !== "roll") return;
     lock.current = true;
     setRolling(true);
-    sound.tick();
+    sound.effect("dice");
     const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
     timers.current.push(
       setTimeout(
@@ -1008,13 +1234,14 @@ export function App() {
           commit(g);
           setRolling(false);
           setMoving(true);
-          sound.tick(true);
+          if (g.phase === "final") setMoment("final");
+          else if (g.card?.category === "chaos") setMoment("chaos");
           timers.current.push(
             setTimeout(
               () => {
                 setMoving(false);
                 lock.current = false;
-                if (g.card?.category === "chaos") sound.sting("chaos-sting");
+                setMoment(null);
               },
               reduced ? 30 : 650,
             ),
@@ -1031,7 +1258,10 @@ export function App() {
     timers.current.push(setTimeout(() => setFeedback(null), 750));
     const g = resolve(game, success);
     commit(g);
-    sound.tick(success);
+    if (g.phase !== "won") sound.effect(success ? "success" : "failure");
+    if (success && (game.card?.effect.success ?? 0) >= 3) sound.say("bravo");
+    else if (game.card?.resolution === "Дуэль")
+      sound.say(success ? "success" : "failure");
     setMoving(true);
     timers.current.push(
       setTimeout(
@@ -1111,9 +1341,7 @@ export function App() {
               <p className="muted">
                 {draft.length} игроков · один незабываемый вечер
               </p>
-              <button className="secondary" onClick={() => sound.rules()}>
-                <Icon name="play" /> Прослушать / повторить
-              </button>
+              <RulesAudio />
               <p className="voice-copy">{rulesVoice}</p>
             </div>
             <div>
@@ -1158,6 +1386,7 @@ export function App() {
                 <span>· {game.players.length} ИГРОКОВ</span>
               </span>
               <div className="header-actions">
+                <FullscreenButton />
                 <button
                   className="icon-button"
                   onClick={undo}
@@ -1300,13 +1529,20 @@ export function App() {
                 key={`${game.turn}-${game.card?.id}-${game.recipient}`}
                 game={game}
                 onResolve={doResolve}
-                onSabotage={(id) => commit(sabotage(game, id))}
+                onSabotage={(id) => {
+                  sound.effect("sabotage");
+                  sound.say("sabotage");
+                  commit(sabotage(game, id));
+                }}
                 onUndo={undo}
                 canUndo={!!snapshot?.history.length}
               />
             )}
           </main>
         ))}
+      {screen === "game" && (feedback || moment) && (
+        <Moment type={feedback || moment!} />
+      )}
       <div className="connection-status" role="status">
         {storageError
           ? "Не удалось сохранить: хранилище браузера недоступно. Оставьте вкладку открытой."
@@ -1321,9 +1557,7 @@ export function App() {
           wide
         >
           <Rules />
-          <button className="secondary" onClick={() => sound.rules()}>
-            <Icon name="play" /> Озвучка · повторить
-          </button>
+          <RulesAudio />
         </Modal>
       )}
       {dialog === "audio" && (
@@ -1346,7 +1580,7 @@ export function App() {
             Всё хранится на этом устройстве. После первой загрузки готовой
             сборки игра доступна без интернета. Учётные записи не нужны.
           </p>
-          <p className="note">18+ · Версия 1.0 · Сделано для живой компании.</p>
+          <p className="note">18+ · Версия 2.0 · Сделано для живой компании.</p>
         </Modal>
       )}
       {dialog === "reset" && (
@@ -1372,14 +1606,14 @@ export function App() {
         </Modal>
       )}
       {splash && (
-        <div className="splash">
-          <Tag>Вечер начинается здесь</Tag>
-          <Logo />
-          <span className="splash-line" />
-          <button className="text-button" onClick={endSplash}>
-            Пропустить →
-          </button>
-        </div>
+        <Intro
+          onEnd={endSplash}
+          onEnableSound={() => {
+            const next = { ...settings, mute: false, effects: true };
+            sound.update(next);
+            setSettings(next);
+          }}
+        />
       )}
     </>
   );
